@@ -50,14 +50,14 @@ var _extractTranslation = function (regexName, regex, content, results) {
         case "JavascriptServiceInstantSimpleQuote":
         case "JavascriptFilterSimpleQuote":
         case "HtmlNgBindHtml":
-          translationKey = translationKey.replace(/\\\'/g, "'");
+          translationKey = translationKey.replace(/\\'/g, "'");
           break;
         case "commentDoubleQuote":
         case "HtmlFilterDoubleQuote":
         case "JavascriptServiceDoubleQuote":
         case "JavascriptServiceInstantDoubleQuote":
         case "JavascriptFilterDoubleQuote":
-          translationKey = translationKey.replace(/\\\"/g, '"');
+          translationKey = translationKey.replace(/\\"/g, '"');
           break;
       }
       results[translationKey] = translationDefaultValue;
@@ -133,22 +133,22 @@ function extract(options) {
   var results = {}, firstFile, 
     regexs = {
       commentSimpleQuote: '\\/\\*\\s*i18nextract\\s*\\*\\/\'((?:\\\\.|[^\'\\\\])*)\'',
-      commentDoubleQuote: '\\/\\*\\s*i18nextract\\s*\\*\\/"((?:\\\\.|[^"\\\\])*)"',
+      commentDoubleQuote: '\\/\\*\\s*i18nextract\\s*\\*\\/\"((?:\\\\.|[^\"\\\\])*)\"',
       HtmlFilterSimpleQuote: escapeRegExp(options.startDelimiter) + '\\s*\'((?:\\\\.|[^\'\\\\])*)\'\\s*\\|\\s*translate(:.*?)?\\s*' + escapeRegExp(options.endDelimiter),
       HtmlFilterSimpleQuoteOnce: escapeRegExp(options.startDelimiter) + '::\\s*\'((?:\\\\.|[^\'\\\\])*)\'\\s*\\|\\s*translate(:.*?)?\\s*' + escapeRegExp(options.endDelimiter),
-      HtmlFilterSimpleQuoteValue: '\\(\'((?:\\.|[^\'\\\\])*)\'\\s*\\|\\s*translate(:.*?)?\\s*\\)',
-      HtmlFilterDoubleQuote: escapeRegExp(options.startDelimiter) + '\\s*"((?:\\\\.|[^"\\\\\])*)"\\s*\\|\\s*translate(:.*?)?\\s*' + escapeRegExp(options.endDelimiter),
-      HtmlDirective: '<[^>]*translate[^{>]*>([^<]*)<\/[^>]*>',
-      HtmlDirectiveStandalone: 'translate="((?:\\\\.|[^"\\\\])*)"',
-      HtmlDirectivePluralLast: 'translate="((?:\\\\.|[^"\\\\])*)".*angular-plural-extract="((?:\\\\.|[^"\\\\])*)"',
-      HtmlDirectivePluralFirst: 'angular-plural-extract="((?:\\\\.|[^"\\\\])*)".*translate="((?:\\\\.|[^"\\\\])*)"',
-      HtmlNgBindHtml: 'ng-bind-html="\\s*\'((?:\\\\.|[^\'\\\\])*)\'\\s*\\|\\s*translate(:.*?)?\\s*"',
+      HtmlFilterSimpleQuoteValue: '\\(\'((?:\\\\.|[^\'\\\\])*)\'\\s*\\|\\s*translate(:.*?)?\\s*\\)',
+      HtmlFilterDoubleQuote: escapeRegExp(options.startDelimiter) + '\\s*\"((?:\\\\.|[^\"\\\\])*)\"\\s*\\|\\s*translate(:.*?)?\\s*' + escapeRegExp(options.endDelimiter),
+      HtmlDirective: '<[^>]*translate[^{>]*>([^<]*)<\\/[^>]*>',
+      HtmlDirectiveStandalone: 'translate=\"((?:\\\\.|[^\"\\\\])*)\"',
+      HtmlDirectivePluralLast: 'translate=\"((?:\\\\.|[^\"\\\\])*)\".*angular-plural-extract=\"((?:\\\\.|[^\"\\\\])*)\"',
+      HtmlDirectivePluralFirst: 'angular-plural-extract=\"((?:\\\\.|[^\"\\\\])*)\".*translate=\"((?:\\\\.|[^\"\\\\])*)\"',
+      HtmlNgBindHtml: 'ng-bind-html=\"\\s*\'((?:\\\\.|[^\'\\\\])*)\'\\s*\\|\\s*translate(:.*?)?\\s*\"',
       JavascriptServiceSimpleQuote: '\\$translate\\(\\s*\'((?:\\\\.|[^\'\\\\])*)\'[^\\)]*\\)',
-      JavascriptServiceDoubleQuote: '\\$translate\\(\\s*"((?:\\\\.|[^"\\\\])*)"[^\\)]*\\)',
+      JavascriptServiceDoubleQuote: '\\$translate\\(\\s*\"((?:\\\\.|[^\"\\\\])*)\"[^\\)]*\\)',
       JavascriptServiceInstantSimpleQuote: '\\$translate\\.instant\\(\\s*\'((?:\\\\.|[^\'\\\\])*)\'[^\\)]*\\)',
-      JavascriptServiceInstantDoubleQuote: '\\$translate\\.instant\\(\\s*"((?:\\\\.|[^"\\\\])*)"[^\\)]*\\)',
+      JavascriptServiceInstantDoubleQuote: '\\$translate\\.instant\\(\\s*\"((?:\\\\.|[^\"\\\\])*)\"[^\\)]*\\)',
       JavascriptFilterSimpleQuote: '\\$filter\\(\\s*\'translate\'\\s*\\)\\s*\\(\\s*\'((?:\\\\.|[^\'\\\\])*)\'[^\\)]*\\)',
-      JavascriptFilterDoubleQuote: '\\$filter\\(\\s*"translate"\\s*\\)\\s*\\(\\s*"((?:\\\\.|[^"\\\\\])*)"[^\\)]*\\)'
+      JavascriptFilterDoubleQuote: '\\$filter\\(\\s*\"translate\"\\s*\\)\\s*\\(\\s*\"((?:\\\\.|[^\"\\\\])*)\"[^\\)]*\\)'
     };
  
  
@@ -166,14 +166,36 @@ function extract(options) {
       firstFile = file;
     }
     var content = file.contents.toString(), _regex;
- 
+
+    // First, extract all translate attribute values to prevent duplicates
+    var translateAttributeRegex = new RegExp(regexs.HtmlDirectiveStandalone, "gi");
+    var match;
+    while ((match = translateAttributeRegex.exec(content)) !== null) {
+      if (match.length >= 2) {
+        var key = match[1].trim();
+        if (key !== "") {
+          // Apply the same unescaping as in _extractTranslation
+          key = key.replace(/\\'/g, "'");
+          key = key.replace(/\\"/g, '"');
+          results[key] = "";
+        }
+      }
+    }
+
+    // Process all patterns except HtmlDirectiveStandalone and HtmlDirective
+    // HtmlDirective is handled specially below to avoid duplicates
     for (var i in regexs) {
+      // Skip HtmlDirectiveStandalone as we already processed it
+      // Skip HtmlDirective as it's handled specially below
+      if (i === "HtmlDirectiveStandalone" || i === "HtmlDirective") {
+        continue;
+      }
+      
       _regex = new RegExp(regexs[i], "gi");
       switch (i) {
         // Case filter HTML simple/double quoted
         case "HtmlFilterSimpleQuote":
         case "HtmlFilterDoubleQuote":
-        case "HtmlDirective":
         case "HtmlDirectivePluralLast":
         case "HtmlDirectivePluralFirst":
         case "JavascriptFilterSimpleQuote":
@@ -187,15 +209,30 @@ function extract(options) {
                 _extractTranslation(i, _regex, matches[index], results);
               }
             }
- 
           }
           break;
         // Others regex
         default:
           _extractTranslation(i, _regex, content, results);
- 
       }
     }
+    
+    // Special handling for HtmlDirective - only process elements that DON'T have translate attributes
+    var htmlDirectiveRegex = new RegExp(regexs.HtmlDirective, "gi");
+    var htmlMatches = content.match(htmlDirectiveRegex);
+    if (_.isArray(htmlMatches) && htmlMatches.length) {
+      for (var index in htmlMatches) {
+        if (htmlMatches[index] !== "") {
+          // Check if this match contains a translate attribute
+          // If it does, we skip it to avoid duplicate entries
+          var hasTranslateAttribute = /translate=/.test(htmlMatches[index]);
+          if (!hasTranslateAttribute) {
+            _extractTranslation("HtmlDirective", htmlDirectiveRegex, htmlMatches[index], results);
+          }
+        }
+      }
+    }
+    
     cb();
   }, function (cb) {
     if (!firstFile) {
